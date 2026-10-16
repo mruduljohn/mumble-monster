@@ -1,4 +1,3 @@
 node_modules
 dist
-public/models/*.tar.gz
 public/models/*.zip

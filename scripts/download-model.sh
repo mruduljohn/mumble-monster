@@ -11,6 +11,8 @@ trap 'rm -rf "$TMP"' EXIT
 echo "Downloading $URL ..."
 curl -sSL --fail --retry 3 -o "$TMP/model.zip" "$URL"
 # vosk-browser expects a tar.gz archive, so repack the official zip.
-(cd "$TMP" && unzip -q model.zip && tar -czf model.tar.gz vosk-model-small-en-us-0.15)
+# Some CI images (e.g. Vercel) lack unzip, so fall back to Python's zipfile.
+(cd "$TMP" && { unzip -q model.zip 2>/dev/null || python3 -m zipfile -e model.zip .; } \
+  && tar -czf model.tar.gz vosk-model-small-en-us-0.15)
 mv "$TMP/model.tar.gz" "$DEST"
 echo "Saved $DEST ($(du -h "$DEST" | cut -f1))"
