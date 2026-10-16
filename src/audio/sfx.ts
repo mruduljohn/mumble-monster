@@ -29,6 +29,11 @@ export function unlockAudio(): void {
   void ctx.resume();
 }
 
+/** True once the AudioContext has been created by a user gesture. */
+export function soundUnlocked(): boolean {
+  return ctx !== null;
+}
+
 export function setMuted(value: boolean): void {
   muted = value;
   if (master && ctx) master.gain.setTargetAtTime(value ? 0 : 0.8, ctx.currentTime, 0.02);

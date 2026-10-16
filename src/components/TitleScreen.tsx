@@ -1,6 +1,9 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { getLeaderboard, subscribeLeaderboard, todaysTop } from '../game/leaderboard';
+import { isMobileDevice } from '../device';
+import type { SpeechManager } from '../engine/manager';
+import { updateSettings, useSettings } from '../game/settings';
 import { Hero } from './Hero';
 import { Monster } from './Monster';
 
@@ -26,7 +29,26 @@ function LogoRow({ text, size, delay, cls }: { text: string; size: string; delay
   );
 }
 
-export function TitleScreen({ onStart }: { onStart: () => void }) {
+function OfflinePackButton({ manager }: { manager: SpeechManager }) {
+  const settings = useSettings();
+  const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
+  if (!isMobileDevice()) return null;
+  if (settings.voskOptIn && state !== 'loading') return <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>Offline voice pack ready</div>;
+  return (
+    <button
+      className="pack-btn"
+      disabled={state === 'loading'}
+      onClick={() => {
+        setState('loading');
+        manager.downloadOfflinePack().then(() => { updateSettings({ voskOptIn: true }); setState('idle'); }).catch(() => setState('error'));
+      }}
+    >
+      {state === 'loading' ? 'Downloading voice pack...' : state === 'error' ? 'Download failed - tap to retry' : 'Download offline voice pack (40MB)'}
+    </button>
+  );
+}
+
+export function TitleScreen({ onStart, manager }: { onStart: () => void; manager: SpeechManager }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code === 'Space' || e.code === 'Enter') {
@@ -43,24 +65,24 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
   const top = todaysTop(entries);
 
   return (
-    <div className="screen" style={{ justifyContent: 'space-between', paddingTop: '1.2rem', paddingBottom: '0.8rem' }}>
+    <div className="screen title-screen" style={{ justifyContent: 'space-between' }}>
       <div className="logo logo-glitch" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        <LogoRow text="MUMBLE" size="3.1rem" delay={0.1} cls="" />
-        <LogoRow text="MONSTER" size="3.5rem" delay={0.7} cls="" />
+        <LogoRow text="MUMBLE" size="min(3.1rem, 11vw)" delay={0.1} cls="" />
+        <LogoRow text="MONSTER" size="min(3.5rem, 12.5vw)" delay={0.7} cls="" />
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', width: '100%', justifyContent: 'center' }}>
+      <div className="title-mid">
         <motion.div initial={{ x: '-10rem', opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 90, damping: 11, delay: 1.1 }}>
-          <Hero photo={null} showName={false} size="9rem" />
+          <Hero photo={null} showName={false} size="min(9rem, 24vw)" />
         </motion.div>
         <div className="pixel" aria-hidden="true" style={{ fontSize: '1.6rem', color: 'var(--pink)', WebkitTextStroke: '0.12rem var(--plum)', paintOrder: 'stroke fill' }}>VS</div>
         <motion.div initial={{ y: '14rem', opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 90, damping: 11, delay: 1.3 }}>
-          <Monster mood="smug" size="12rem" />
+          <Monster mood="smug" size="min(12rem, 32vw)" />
         </motion.div>
         <motion.div
-          className="panel"
+          className="panel title-board"
           initial={{ x: 120, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 100, damping: 14, delay: 1.5 }}
-          style={{ minWidth: '25rem', textAlign: 'left', borderColor: 'var(--pink)', padding: '0.7rem 1.4rem' }}
+          style={{ textAlign: 'left', borderColor: 'var(--pink)', padding: '0.7rem 1.4rem' }}
         >
           <div className="pixel" style={{ color: '#e63a86', fontSize: '1rem', marginBottom: '0.7rem' }}>
             TODAY&apos;S TOP 5
@@ -80,7 +102,8 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
         <motion.button style={{ marginBottom: '0.3rem', fontSize: '1.9rem', padding: '0.9rem 2.4rem', minHeight: '3.6rem' }} className="big-btn" onClick={onStart} animate={{ scale: [1, 1.07, 1] }} transition={{ duration: 1, repeat: Infinity }}>
           START
         </motion.button>
-        <div className="pixel press-start" style={{ fontSize: '0.75rem', color: 'var(--plum)' }}>PRESS SPACE / TAP TO PLAY - READ THE LINES LOUD!</div>
+        <div className="pixel press-start" style={{ fontSize: '0.75rem', color: 'var(--plum)', textAlign: 'center', padding: '0 0.5rem' }}>{isMobileDevice() ? 'TAP START - READ THE LINES LOUD!' : 'PRESS SPACE / TAP TO PLAY - READ THE LINES LOUD!'}</div>
+        <OfflinePackButton manager={manager} />
         <div className="credit-badge">
           <span className="by">PRESENTED BY</span>
           <span className="org">{ORG}</span>

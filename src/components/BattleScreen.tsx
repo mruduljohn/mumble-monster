@@ -6,19 +6,18 @@ import { ENTRANCE_TAUNTS, GARBLED_TAUNTS, HEAL_TAUNTS, HIT_CALLOUTS } from '../c
 import { buildGameLines, pick } from '../game/deck';
 import { hitBurst, victoryConfetti } from '../game/effects';
 import {
-  clarityFromVolume, clarityScore, loudnessScore, MONSTER_MAX_HP, resolveLine, tokenize, VICTORY_BONUS, WORD_MATCH_MIN, wordSimilarity,
+  applyWave, clarityFromVolume, grantsFinaleRetry, clarityScore, loudnessScore, MONSTER_MAX_HP, resolveLine, tokenize, VICTORY_BONUS, WORD_MATCH_MIN, wordSimilarity,
   type LineResult,
 } from '../game/scoring';
 import { getSettings } from '../game/settings';
 import type { GameSummary } from '../game/types';
 import type { SpeechManager } from '../engine/manager';
+import { isLowPower } from '../device';
 import { Hero, type HeroPose } from './Hero';
 import { Monster, type Mood } from './Monster';
 import { VolumeMeter } from './VolumeMeter';
 
 const WAVES = 5;
-const PRE_FINALE_MIN_HP = 10; // monster cannot die before the finishing move
-const OVERKILL_POINTS_PER_HP = 10; // absorbed damage becomes bonus score
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 type Phase = 'intro' | 'countdown' | 'speaking' | 'result' | 'end';
@@ -71,6 +70,9 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
       let streakNow = 0;
       let scoreNow = 0;
       let best = 0;
+      let priorHits = 0;
+      let retryUsed = false;
+      let isRetry = false;
       const clarities: number[] = [];
       const loudnesses: number[] = [];
 
@@ -78,7 +80,7 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
         const finale = w === WAVES - 1;
         setWave(w); setLine(lines[w]); setTranscript(''); setHeard(''); setResult(null); setCallout('');
         setCount(null); setMood('smug'); setPhase('intro');
-        setCallout(finale ? 'FINISHING MOVE!' : pick(ENTRANCE_TAUNTS));
+        setCallout(isRetry ? 'LAST CHANCE! Try again!' : finale ? 'FINISHING MOVE!' : pick(ENTRANCE_TAUNTS));
         await sleep(finale ? 2200 : 1700);
         if (!alive()) return;
         setCallout('');
@@ -122,21 +124,19 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
         // Score
         const clarity = text === null ? clarityFromVolume(samples) : clarityScore(lines[w], text);
         const loudness = loudnessScore(samples);
-        const r = resolveLine({ clarity, loudness, streak: streakNow, finale });
+        const r0 = resolveLine({ clarity, loudness, streak: streakNow, finale });
+        const retry = grantsFinaleRetry({ finale, outcome: r0.outcome, priorHits, retryUsed });
+        const r = retry ? { ...r0, heal: 0 } : r0; // the missed attempt does not heal
+        if (!finale && (r.outcome === 'hit' || r.outcome === 'crit')) priorHits++;
         streakNow = r.streak;
         best = Math.max(best, streakNow);
         clarities.push(clarity);
         loudnesses.push(loudness);
         scoreNow += r.points;
-        hpNow = Math.min(MONSTER_MAX_HP, hpNow - r.damage + r.heal);
-        // Damage the pre-finale clamp absorbs is converted into bonus score instead of wasted.
-        let overkill = 0;
-        if (!finale && hpNow < PRE_FINALE_MIN_HP) {
-          overkill = (PRE_FINALE_MIN_HP - hpNow) * OVERKILL_POINTS_PER_HP;
-          hpNow = PRE_FINALE_MIN_HP;
-          scoreNow += overkill;
-        }
-        hpNow = Math.max(0, hpNow);
+        const applied = applyWave(hpNow, r, finale);
+        hpNow = applied.hp;
+        const overkill = applied.overkill;
+        scoreNow += overkill;
 
         setResult(r); setHeard(text ?? ''); setHp(hpNow); setScore(scoreNow); setStreak(streakNow);
         setPhase('result');
@@ -158,14 +158,20 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
           sfx.garbled();
         } else {
           setMood('laughing');
-          setCallout(pick(HEAL_TAUNTS));
-          setPopup({ id: Date.now(), text: `+${r.heal} HP`, color: '#ff4d6d' });
-          sfx.heal(); setTimeout(() => sfx.laugh(), 300);
+          if (retry) {
+            setCallout('LAST CHANCE!');
+            sfx.garbled();
+          } else {
+            setCallout(pick(HEAL_TAUNTS));
+            setPopup({ id: Date.now(), text: `+${r.heal} HP`, color: '#ff4d6d' });
+            sfx.heal(); setTimeout(() => sfx.laugh(), 300);
+          }
         }
         await sleep(2800);
         if (!alive()) return;
         setBeam('none'); setPopup(null);
         if (hpNow <= 0) break;
+        if (retry) { retryUsed = true; isRetry = true; w--; }
       }
 
       const won = hpNow <= 0;
@@ -229,13 +235,13 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
       </AnimatePresence>
       <motion.div
         key={shakeKey}
-        className="screen"
-        style={{ justifyContent: 'flex-start', gap: '0.2rem', paddingTop: '0.8rem', paddingBottom: '0.8rem' }}
+        className="screen battle-screen"
+        style={{ justifyContent: 'flex-start', gap: '0.2rem' }}
         animate={shakeKey > 0 ? { x: [0, -36 * a, 32 * a, -24 * a, 16 * a, -8 * a, 0], y: [0, 14 * a, -16 * a, 10 * a, -6 * a, 0], rotate: [0, -1 * a, 1 * a, -0.5 * a, 0] } : undefined}
         transition={{ duration: 0.55 }}
       >
         {/* HUD: wave pips, HP bar with damage trail, score */}
-        <div style={{ width: '76%', display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
+        <div className="bt-hud">
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
             <span className="pixel" style={{ fontSize: '0.6rem', color: 'var(--plum)' }}>WAVE</span>
             <div style={{ display: 'flex', gap: '0.35rem' }}>
@@ -262,16 +268,16 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
               <div className="pixel" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', color: 'var(--plum)', WebkitTextStroke: '0.2rem #fff', paintOrder: 'stroke fill' }}>{hp} / {MONSTER_MAX_HP}</div>
             </div>
           </div>
-          <div style={{ textAlign: 'right', minWidth: '9rem', marginRight: '6.5rem' }}>
+          <div className="bt-score">
             <div className="pixel" style={{ fontSize: '0.6rem', color: 'var(--plum)', lineHeight: 1, marginBottom: '0.45rem' }}>SCORE</div>
             <motion.div key={score} initial={{ scale: 1.3 }} animate={{ scale: 1 }} className="pixel" style={{ fontSize: '1.4rem', lineHeight: 1.1, color: 'var(--plum)', transformOrigin: 'right center' }}>{score}</motion.div>
           </div>
         </div>
 
         {/* arena: hero (left) vs monster (right); the beam lane sits between them, above the phrase card */}
-        <div style={{ position: 'relative', height: '10.6rem', marginTop: '0.5rem', width: '88%', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', zIndex: 3 }}>
-          <div style={{ width: '11rem', display: 'flex', justifyContent: 'center', zIndex: 2 }}>
-            <Hero photo={photo} name={name} pose={heroPose} combo={streak >= 2 && phase !== 'end'} size="9.2rem" />
+        <div className="bt-arena">
+          <div className="bt-side" style={{ zIndex: 2 }}>
+            <Hero photo={photo} name={name} pose={heroPose} combo={streak >= 2 && phase !== 'end'} size="min(9.2rem, 25vw)" />
           </div>
 
           <div style={{ position: 'relative', flex: 1, height: '100%' }}>
@@ -302,21 +308,21 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
             )}
           </div>
 
-          <div style={{ position: 'relative', width: '11rem', display: 'flex', justifyContent: 'center', alignItems: 'flex-end' }}>
+          <div className="bt-side" style={{ position: 'relative', alignItems: 'flex-end' }}>
             <motion.div
               animate={defeated
                 ? { scale: [1, 1.12, 1.05, 1.35, 0], opacity: [1, 1, 1, 1, 0], x: [0, -10, 10, -14, 0], rotate: [0, -4, 4, -8, 20] }
                 : { scale: 1, opacity: 1, x: 0, rotate: 0 }}
               transition={{ duration: 1.3, times: defeated ? [0, 0.25, 0.5, 0.8, 1] : undefined }}
             >
-              <Monster mood={mood} size="9.6rem" />
+              <Monster mood={mood} size="min(9.6rem, 26vw)" />
             </motion.div>
             {defeated && <Explosion />}
             <AnimatePresence>
               {popup && (
                 <motion.div
                   key={popup.id}
-                  className="pixel"
+                  className="pixel bt-popup"
                   initial={{ y: 0, opacity: 1, scale: 0.4, rotate: -10 }} animate={{ y: -90, opacity: [1, 1, 0], scale: [0.4, 1.6, 1.3], rotate: [-10, 6, -4] }}
                   transition={{ duration: 1.8 }}
                   style={{
@@ -333,14 +339,14 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
         </div>
 
         {/* callout */}
-        <div style={{ height: '2.3rem', zIndex: 7 }}>
+        <div className="bt-callout">
           <AnimatePresence mode="wait">
             {callout && (
               <motion.div
                 key={callout} className="pixel" initial={{ scale: 0.2, rotate: -14, opacity: 0 }} animate={{ scale: [0.2, 1.25, 1], rotate: -3, opacity: 1 }} exit={{ opacity: 0, scale: 1.3 }}
                 transition={{ duration: 0.35 }}
                 style={{
-                  fontSize: '1.7rem', color: result && result.heal > 0 ? '#ff4d6d' : 'var(--yellow)', whiteSpace: 'nowrap',
+                  fontSize: 'min(1.7rem, 6.2vw)', color: result && result.heal > 0 ? '#ff4d6d' : 'var(--yellow)', whiteSpace: 'nowrap',
                   WebkitTextStroke: '0.22rem #2b1b3f', paintOrder: 'stroke fill', textShadow: '0 0.25rem 0 #2b1b3f',
                 }}
               >
@@ -352,7 +358,7 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
 
         {/* phrase card */}
         {showPhrase && (
-          <motion.div key={wave} initial={{ y: 30, opacity: 0, scale: 0.9 }} animate={{ y: 0, opacity: 1, scale: 1 }} className="panel" style={{ maxWidth: '88%', padding: '0.7rem 2rem', borderColor: wave === WAVES - 1 ? 'var(--pink)' : 'var(--cyan)' }}>
+          <motion.div key={wave} initial={{ y: 30, opacity: 0, scale: 0.9 }} animate={{ y: 0, opacity: 1, scale: 1 }} className="panel bt-phrase" style={{ borderColor: wave === WAVES - 1 ? 'var(--pink)' : 'var(--cyan)' }}>
             <div className="pixel" style={{ fontSize: '0.55rem', color: 'var(--plum)', marginBottom: '0.3rem' }}>
               {wave === WAVES - 1 ? 'FINISHING MOVE - READ THIS!' : 'READ THIS OUT LOUD'}
             </div>
@@ -363,7 +369,7 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
         )}
 
         {/* countdown / speaking / result details */}
-        <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: '0.4rem', minHeight: 0, paddingTop: '0.4rem' }}>
+        <div className="bt-lower">
           {phase === 'countdown' && count !== null && (
             <motion.div
               key={String(count)} className="logo-letter l-a"
@@ -375,7 +381,7 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
           )}
           {phase === 'speaking' && (
             <>
-              <div style={{ width: '60%', height: '0.9rem', background: '#ffffff', borderRadius: '0.5rem', overflow: 'hidden', border: '0.15rem solid var(--plum)' }}>
+              <div className="bt-timer" style={{ background: '#ffffff', borderRadius: '0.5rem', overflow: 'hidden', border: '0.15rem solid var(--plum)' }}>
                 <div style={{ width: `${timeLeft * 100}%`, height: '100%', background: timeLeft < 0.3 ? '#ff4d6d' : 'linear-gradient(90deg, var(--cyan), var(--lime))', boxShadow: 'none' }} />
               </div>
               <VolumeMeter />
@@ -386,8 +392,8 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
           )}
           {phase === 'result' && result && (
             <div style={{ fontSize: '1.6rem' }}>
-              {!volumeMode && <div className="transcript" style={{ fontSize: '1.7rem' }}>I heard: &quot;{heard || '...nothing'}&quot;</div>}
-              <div style={{ display: 'flex', gap: '2.5rem', justifyContent: 'center', marginTop: '0.3rem', background: '#fff', border: '0.2rem solid var(--plum)', borderRadius: '1.2rem', padding: '0.2rem 1.6rem', boxShadow: '0 0.25rem 0 var(--plum)' }}>
+              {!volumeMode && <div className="transcript" style={{ fontSize: '1.7rem', maxWidth: '100%' }}>I heard: &quot;{heard || '...nothing'}&quot;</div>}
+              <div className="bt-stats" style={{ display: 'flex', gap: '0.1rem 2.5rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '0.3rem', background: '#fff', border: '0.2rem solid var(--plum)', borderRadius: '1.2rem', padding: '0.2rem 1.6rem', boxShadow: '0 0.25rem 0 var(--plum)' }}>
                 <span>Clarity <b style={{ color: '#1d86c4', fontSize: '2rem' }}>{Math.round(result.clarity * 100)}%</b></span>
                 <span>Loudness <b style={{ color: '#e63a86', fontSize: '2rem' }}>{result.loudness}</b></span>
               </div>
@@ -396,7 +402,7 @@ export function BattleScreen({ manager, name, photo, onFinish }: { manager: Spee
           {phase === 'end' && (
             <motion.div
               className="logo-letter" initial={{ scale: 0 }} animate={{ scale: [0, 1.3, 1] }} transition={{ delay: defeated ? 1 : 0, duration: 0.5 }}
-              style={{ fontSize: '2.4rem', color: hp <= 0 ? 'var(--lime)' : 'var(--pink)' }}
+              style={{ fontSize: 'min(2.4rem, 7vw)', color: hp <= 0 ? 'var(--lime)' : 'var(--pink)' }}
             >
               {hp <= 0 ? 'MONSTER DEFEATED!' : 'MUMBLE VICTORY...'}
             </motion.div>
@@ -437,7 +443,7 @@ function SoundBeam({ kind }: { kind: 'hit' | 'crit' | 'bad' }) {
   );
 }
 
-const BURST_ANGLES = Array.from({ length: 14 }, (_, i) => (i / 14) * Math.PI * 2);
+const BURST_ANGLES = Array.from({ length: isLowPower() ? 8 : 14 }, (_, i) => (i / 14) * Math.PI * 2);
 
 function SparkBurst({ color }: { color: string }) {
   return (
@@ -455,7 +461,7 @@ function SparkBurst({ color }: { color: string }) {
   );
 }
 
-const CHUNKS = Array.from({ length: 28 }, (_, i) => i);
+const CHUNKS = Array.from({ length: isLowPower() ? 12 : 28 }, (_, i) => i);
 
 /** Defeat blast: shockwave rings + flying neon goo chunks, timed to land when the monster pops. */
 function Explosion() {

@@ -4,8 +4,12 @@ import {
   clarityFromVolume,
   clarityScore,
   comboMultiplier,
+  applyWave,
   levelFromRms,
+  MONSTER_MAX_HP,
   levenshtein,
+  grantsFinaleRetry,
+  HEAL_AMOUNT,
   loudnessScore,
   normalize,
   pickTitle,
@@ -131,9 +135,9 @@ describe('resolveLine', () => {
     const c = resolveLine({ clarity: 0.9, loudness: 80, streak: 0, finale: true });
     expect(b.damage).toBeGreaterThan(a.damage);
     expect(c.damage).toBeGreaterThan(a.damage);
-    expect(comboMultiplier(10)).toBe(2);
+    expect(comboMultiplier(10)).toBe(1.8);
   });
-  it('garbled deals half damage and resets streak', () => {
+  it('garbled deals reduced (but real) damage and resets streak', () => {
     const hit = resolveLine({ clarity: 0.3, loudness: 90, streak: 3, finale: false });
     expect(hit.outcome).toBe('garbled');
     expect(hit.streak).toBe(0);
@@ -155,5 +159,132 @@ describe('pickTitle', () => {
     expect(pickTitle({ won: true, avgClarity: 0.9, peakLoudness: 95, avgLoudness: 70 })).toBe('Certified Loud Legend');
     expect(pickTitle({ won: false, avgClarity: 0.9, peakLoudness: 60, avgLoudness: 50 })).toBe('Clarity Commander');
     expect(pickTitle({ won: false, avgClarity: 0.2, peakLoudness: 20, avgLoudness: 10 })).toBe('Whisper Wizard');
+  });
+});
+
+describe('game balance (full-game simulation)', () => {
+  type Wave = [clarity: number, loudness: number];
+  // Weakest input that still counts as each outcome.
+  const HIT: Wave = [0.5, 35];
+  const CRIT: Wave = [0.85, 75];
+  const MUMBLE: Wave = [0.8, 10];
+  const GARBLED: Wave = [0.2, 60];
+  const TYPICAL: Wave = [0.8, 60];
+  const SILENT: Wave = [0, 0];
+
+  /** Mirrors BattleScreen: resolveLine + applyWave over 5 waves (last is the finale). */
+  function play(waves: Wave[]): { won: boolean; hp: number } {
+    let hp = MONSTER_MAX_HP;
+    let streak = 0;
+    for (let w = 0; w < waves.length; w++) {
+      const finale = w === waves.length - 1;
+      const r = resolveLine({ clarity: waves[w][0], loudness: waves[w][1], streak, finale });
+      streak = r.streak;
+      hp = applyWave(hp, r, finale).hp;
+      if (hp <= 0) return { won: true, hp: 0 };
+    }
+    return { won: false, hp };
+  }
+
+  const masks = Array.from({ length: 32 }, (_, m) => Array.from({ length: 5 }, (_, i) => Boolean((m >> i) & 1)));
+  const count = (m: boolean[]) => m.filter(Boolean).length;
+  const seq = (m: boolean[], good: Wave, bad: Wave) => m.map((h) => (h ? good : bad));
+
+  it('outcome fixtures classify as intended', () => {
+    expect(classifyOutcome(...HIT)).toBe('hit');
+    expect(classifyOutcome(...CRIT)).toBe('crit');
+    expect(classifyOutcome(...MUMBLE)).toBe('mumble');
+    expect(classifyOutcome(...GARBLED)).toBe('garbled');
+    expect(classifyOutcome(...SILENT)).toBe('mumble');
+  });
+
+  it('3+ weakest hits (no crits, no combo needed) win in every order that lands the finale', () => {
+    for (const m of masks.filter((x) => count(x) >= 3 && x[4])) {
+      expect(play(seq(m, HIT, MUMBLE)).won, m.join()).toBe(true);
+      expect(play(seq(m, HIT, SILENT)).won, m.join()).toBe(true);
+    }
+  });
+
+  it('3 weakest hits with the finale landed also win when non-consecutive (H M H M H)', () => {
+    expect(play([HIT, MUMBLE, HIT, MUMBLE, HIT]).won).toBe(true);
+    expect(play([MUMBLE, MUMBLE, HIT, HIT, HIT]).won).toBe(true);
+  });
+
+  it('2 hits + 1 crit (rest mumbles) wins', () => {
+    expect(play([HIT, MUMBLE, HIT, MUMBLE, CRIT]).won).toBe(true);
+    expect(play([CRIT, MUMBLE, HIT, MUMBLE, HIT]).won).toBe(true);
+    expect(play([MUMBLE, HIT, CRIT, MUMBLE, HIT]).won).toBe(true);
+  });
+
+  it('2 or fewer hits lose (weakest and typical strength, any placement)', () => {
+    for (const m of masks.filter((x) => count(x) <= 2)) {
+      expect(play(seq(m, HIT, MUMBLE)).won, m.join()).toBe(false);
+      expect(play(seq(m, TYPICAL, MUMBLE)).won, m.join()).toBe(false);
+    }
+  });
+
+  it('silence loses, and the monster survives until the finale', () => {
+    expect(play([SILENT, SILENT, SILENT, SILENT, SILENT]).won).toBe(false);
+    expect(play([CRIT, CRIT, CRIT, CRIT, MUMBLE]).won).toBe(false); // finale guarantee
+  });
+
+  it('four strong lines never kill before the finale; a normal finale hit then finishes', () => {
+    let hp = MONSTER_MAX_HP;
+    let streak = 0;
+    for (let w = 0; w < 4; w++) {
+      const r = resolveLine({ clarity: 1, loudness: 95, streak, finale: false });
+      streak = r.streak;
+      hp = applyWave(hp, r, false).hp;
+    }
+    expect(hp).toBeGreaterThan(0);
+    const fin = resolveLine({ clarity: HIT[0], loudness: HIT[1], streak: 0, finale: true });
+    expect(applyWave(hp, fin, true).hp).toBe(0);
+  });
+
+  it('overkill from the pre-finale clamp converts to bonus points', () => {
+    const r = resolveLine({ clarity: 1, loudness: 95, streak: 5, finale: false });
+    const a = applyWave(15, r, false);
+    expect(a.hp).toBe(10);
+    expect(a.overkill).toBeGreaterThan(0);
+  });
+
+  it('LAST CHANCE: 4 hits + mumbled finale + hit retry wins; 3 hits + mumble + mumble retry loses; <2 prior hits get no retry', () => {
+    const run = (pre: Wave[], finaleAttempts: Wave[]) => {
+      let hp = MONSTER_MAX_HP;
+      let streak = 0;
+      let priorHits = 0;
+      for (const w of pre) {
+        const r = resolveLine({ clarity: w[0], loudness: w[1], streak, finale: false });
+        streak = r.streak;
+        if (r.outcome === 'hit' || r.outcome === 'crit') priorHits++;
+        hp = applyWave(hp, r, false).hp;
+      }
+      let retryUsed = false;
+      for (const a of finaleAttempts) {
+        const r0 = resolveLine({ clarity: a[0], loudness: a[1], streak, finale: true });
+        const retry = grantsFinaleRetry({ finale: true, outcome: r0.outcome, priorHits, retryUsed });
+        const r = retry ? { ...r0, heal: 0 } : r0;
+        hp = applyWave(hp, r, true).hp;
+        if (hp <= 0) return { won: true, retried: retryUsed };
+        if (!retry) return { won: false, retried: retryUsed };
+        retryUsed = true;
+        streak = 0;
+      }
+      return { won: false, retried: retryUsed };
+    };
+    expect(run([HIT, HIT, HIT, HIT], [MUMBLE, HIT])).toEqual({ won: true, retried: true });
+    expect(run([HIT, HIT, HIT, MUMBLE], [MUMBLE, MUMBLE])).toEqual({ won: false, retried: true });
+    expect(run([HIT, MUMBLE, MUMBLE, MUMBLE], [MUMBLE, HIT]).retried).toBe(false);
+    expect(run([HIT, MUMBLE, MUMBLE, MUMBLE], [MUMBLE, HIT]).won).toBe(false);
+    expect(grantsFinaleRetry({ finale: true, outcome: 'garbled', priorHits: 4, retryUsed: false })).toBe(false);
+    expect(grantsFinaleRetry({ finale: true, outcome: 'mumble', priorHits: 4, retryUsed: true })).toBe(false);
+  });
+
+  it('garbled is a real but reduced hit; mumble heal is small', () => {
+    const g = resolveLine({ clarity: GARBLED[0], loudness: GARBLED[1], streak: 0, finale: false });
+    const h = resolveLine({ clarity: HIT[0], loudness: HIT[1], streak: 0, finale: false });
+    expect(g.damage).toBeGreaterThanOrEqual(10);
+    expect(g.damage).toBeLessThan(h.damage);
+    expect(HEAL_AMOUNT).toBeLessThanOrEqual(5);
   });
 });

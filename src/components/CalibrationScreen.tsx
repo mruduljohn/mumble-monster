@@ -46,7 +46,7 @@ export function CalibrationScreen({ manager, onDone }: Props) {
         />
       </div>
       <h2 className="neon-title" style={{ fontSize: '2.2rem' }}>SHHH...</h2>
-      <div style={{ fontSize: '2.2rem' }}>Stay quiet... measuring the crowd noise</div>
+      <div style={{ fontSize: 'min(2.2rem, 6vw)' }}>Stay quiet... measuring the crowd noise</div>
       {loading && <div style={{ fontSize: '1.4rem', color: '#c2410c' }}>Loading offline speech brain (first time takes a few seconds)...</div>}
     </div>
   );

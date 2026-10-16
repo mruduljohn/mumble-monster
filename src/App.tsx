@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { fullscreenSupported } from './device';
 import { MicError, mic, type MicErrorKind } from './audio/mic';
-import { setMuted, sfx, startMusic, unlockAudio } from './audio/sfx';
+import { setMuted, sfx, soundUnlocked, startMusic, unlockAudio } from './audio/sfx';
 import { AdminPanel } from './components/AdminPanel';
 import { Background } from './components/Background';
 import { BattleScreen } from './components/BattleScreen';
@@ -42,6 +43,32 @@ export function App() {
   }, [screen]);
 
   useEffect(() => manager.subscribe(() => setEngineLabel(manager.getStatus().kind)), [manager]);
+
+  const canFullscreen = useMemo(() => fullscreenSupported(), []);
+  const tapsRef = useRef<number[]>([]);
+  // Touch devices have no Ctrl+Shift+A: five quick taps on the top-left hotspot open the admin panel.
+  const onAdminTap = useCallback(() => {
+    const now = Date.now();
+    tapsRef.current = [...tapsRef.current.filter((t) => now - t < 3000), now];
+    if (tapsRef.current.length >= 5) {
+      tapsRef.current = [];
+      setAdmin((a) => !a);
+    }
+  }, []);
+
+  // iOS/Android keep AudioContexts suspended until a user gesture (and after backgrounding): resume on any touch.
+  useEffect(() => {
+    const resume = () => {
+      void mic.ctx?.resume().catch(() => undefined);
+      if (soundUnlocked()) unlockAudio();
+    };
+    window.addEventListener('pointerdown', resume, { passive: true });
+    document.addEventListener('visibilitychange', resume);
+    return () => {
+      window.removeEventListener('pointerdown', resume);
+      document.removeEventListener('visibilitychange', resume);
+    };
+  }, []);
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -113,7 +140,7 @@ export function App() {
   return (
     <div className="stage">
       <Background />
-      {screen === 'title' && <TitleScreen onStart={() => void onStart()} />}
+      {screen === 'title' && <TitleScreen onStart={() => void onStart()} manager={manager} />}
       {screen === 'name' && <NameScreen defaultName={defaultName} onDone={onName} />}
       {screen === 'photo' && <PhotoScreen nickname={name} onDone={onPhoto} />}
       {screen === 'calibrate' && <CalibrationScreen manager={manager} onDone={onCalibrated} />}
@@ -122,10 +149,11 @@ export function App() {
       {micError && <MicDeniedScreen kind={micError} onRetry={() => void onStart()} />}
       {admin && <AdminPanel manager={manager} onClose={() => setAdmin(false)} />}
 
-      <button className="hud-btn" style={{ right: '0.8rem' }} onClick={toggleFullscreen} aria-label="Toggle fullscreen" title="Fullscreen (F)">
+      <div onClick={onAdminTap} aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, width: 48, height: 48, zIndex: 60 }} />
+      {canFullscreen && <button className="hud-btn" style={{ right: 'calc(0.8rem + var(--sar))' }} onClick={toggleFullscreen} aria-label="Toggle fullscreen" title="Fullscreen (F)">
         <svg viewBox="0 0 24 24" width="60%" height="60%" fill="none" stroke="#2b1b3f" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>
-      </button>
-      <button className="hud-btn" style={{ right: '4.4rem' }} onClick={() => updateSettings({ muted: !settings.muted })} aria-label={settings.muted ? 'Unmute sound' : 'Mute sound'} title={settings.muted ? 'Unmute sound' : 'Mute sound'}>
+      </button>}
+      <button className="hud-btn" style={{ right: canFullscreen ? 'calc(4.4rem + var(--sar))' : 'calc(0.8rem + var(--sar))' }} onClick={() => updateSettings({ muted: !settings.muted })} aria-label={settings.muted ? 'Unmute sound' : 'Mute sound'} title={settings.muted ? 'Unmute sound' : 'Mute sound'}>
         <svg viewBox="0 0 24 24" width="60%" height="60%" fill="none" stroke="#2b1b3f" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M4 9v6h4l5 4V5L8 9z" fill="#ffd23f" />
           {settings.muted ? <path d="M16 9l5 6M21 9l-5 6" /> : <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />}

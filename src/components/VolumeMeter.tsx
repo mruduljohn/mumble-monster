@@ -66,7 +66,7 @@ export function VolumeMeter() {
   }, []);
 
   return (
-    <div style={{ width: '72%' }}>
+    <div className="vol-meter">
       <div ref={frame} style={{ borderRadius: '1.2rem', border: '0.28rem solid var(--plum)', background: '#fff', padding: '0.5rem 0.7rem', transition: 'transform 0.08s' }}>
         <canvas ref={ref} style={{ width: '100%', height: '3.8rem', display: 'block' }} />
       </div>

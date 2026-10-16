@@ -1,4 +1,5 @@
 import type { MicInput } from '../audio/mic';
+import { isMobileDevice } from '../device';
 import type { Settings } from '../game/settings';
 import type { EngineKind, SpeechEngine, SpeechHandlers } from './types';
 import { VolumeOnlyEngine } from './volumeOnly';
@@ -69,6 +70,11 @@ export class SpeechManager {
     this.setStatus(kind, false);
   }
 
+  /** Mobile opt-in: fetch the offline model now (user pressed the download button). */
+  async downloadOfflinePack(): Promise<void> {
+    await loadVoskModel();
+  }
+
   beginWave(handlers: SpeechHandlers): void {
     this.waveActive = true;
     this.handlers = {
@@ -100,7 +106,9 @@ export class SpeechManager {
       case 'web':
         return webSpeechSupported() ? 'web' : 'volume';
       default:
-        return webSpeechSupported() && navigator.onLine ? 'web' : 'vosk';
+        if (webSpeechSupported() && navigator.onLine) return 'web';
+        // Phones never auto-download the 40MB model (cellular data): volume-only unless the player opted in.
+        return isMobileDevice() && !s.voskOptIn ? 'volume' : 'vosk';
     }
   }
 
@@ -108,7 +116,8 @@ export class SpeechManager {
   private async degrade(reason: string): Promise<void> {
     const failed = this.current.kind;
     const forced = this.lastSettings?.engine !== 'auto';
-    const next: EngineKind = failed === 'web' && !forced ? 'vosk' : 'volume';
+    const skipVosk = isMobileDevice() && !this.lastSettings?.voskOptIn;
+    const next: EngineKind = failed === 'web' && !forced && !skipVosk ? 'vosk' : 'volume';
     this.downgradedTo = next;
     this.current.stop().catch(() => undefined);
     const handlers = this.handlers;

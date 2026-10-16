@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { isLowPower } from '../device';
 
 interface Item { x: number; y: number; s: number; vy: number; rot: number; vr: number; kind: number; color: string }
 interface Ring { r: number; color: string }
@@ -14,7 +15,7 @@ export function Background() {
     const resize = () => { canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight; };
     resize();
     window.addEventListener('resize', resize);
-    const items: Item[] = Array.from({ length: 36 }, (_, i) => ({
+    const items: Item[] = Array.from({ length: isLowPower() ? 12 : 36 }, (_, i) => ({
       x: Math.random(), y: Math.random(), s: 0.6 + Math.random() * 1.2, vy: 0.0002 + Math.random() * 0.0006,
       rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.002, kind: i % 4, color: COLORS[i % COLORS.length],
     }));

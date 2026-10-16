@@ -74,7 +74,7 @@ export function ResultsScreen({ summary, photo, onDone }: { summary: GameSummary
   }, [left, onDone]);
 
   return (
-    <div className="screen" style={{ gap: '0.6rem', paddingTop: '0.8rem', paddingBottom: '0.6rem' }}>
+    <div className="screen results-screen" style={{ gap: '0.6rem' }}>
       <motion.h2
         className="neon-title" style={{ fontSize: '2rem' }}
         initial={{ scale: 0, rotate: -10 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 200, damping: 10 }}
@@ -85,15 +85,15 @@ export function ResultsScreen({ summary, photo, onDone }: { summary: GameSummary
       <motion.div
         className="comm-card"
         initial={{ y: 300, rotate: 8, opacity: 0 }} animate={{ y: 0, rotate: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 90, damping: 13 }}
-        style={{ width: '50rem' }}
+        style={{ width: 'min(50rem, 100%)' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
           <span className="pixel" style={{ fontSize: '0.75rem', color: '#e63a86' }}>COMMUNICATOR CARD</span>
           <span className="pixel" style={{ fontSize: '0.6rem', color: '#1d86c4' }}>{summary.won ? 'MONSTER SLAYER' : 'CHALLENGER'}</span>
         </div>
-        <div style={{ display: 'flex', gap: '1.6rem', alignItems: 'stretch' }}>
-          <div style={{ width: '15rem', flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '1rem', background: 'radial-gradient(circle at 50% 40%, #ffe3f1, #cfeaff)', border: '0.2rem solid var(--plum)', padding: '0.6rem 0.4rem 0.8rem', gap: '0.6rem' }}>
-            <Hero photo={photo} showName={false} pose={summary.won ? 'victory' : 'defeat'} size="9rem" />
+        <div className="comm-body">
+          <div className="comm-hero" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '1rem', background: 'radial-gradient(circle at 50% 40%, #ffe3f1, #cfeaff)', border: '0.2rem solid var(--plum)', padding: '0.6rem 0.4rem 0.8rem', gap: '0.6rem' }}>
+            <Hero photo={photo} showName={false} pose={summary.won ? 'victory' : 'defeat'} size="min(9rem, 26vw)" />
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <Monster mood={summary.won ? 'defeated' : 'laughing'} size="2.6rem" />
               <div className="pixel" style={{ fontSize: '0.5rem', color: 'var(--plum)' }}>
@@ -117,12 +117,12 @@ export function ResultsScreen({ summary, photo, onDone }: { summary: GameSummary
           <span style={{ color: '#e63a86' }}>Did you know? </span>{fact}
         </div>
         {!summary.won && <div style={{ fontSize: '1.1rem', color: 'var(--pink)', marginTop: '0.3rem' }}>{DEFEAT_TAUNT}</div>}
-        <div style={{ marginTop: '0.55rem', paddingTop: '0.4rem', borderTop: '0.12rem solid rgba(43,27,63,0.35)', fontSize: '0.95rem', color: 'var(--plum)' }}>
+        <div className="comm-org" style={{ marginTop: '0.55rem', paddingTop: '0.4rem', borderTop: '0.12rem solid rgba(43,27,63,0.35)', fontSize: '0.95rem', color: 'var(--plum)' }}>
           <span className="pixel" style={{ fontSize: '0.5rem', color: '#e63a86', marginRight: '0.6rem' }}>PRESENTED BY</span>{ORG}
         </div>
       </motion.div>
 
-      <button className="big-btn alt" style={{ fontSize: '1.4rem', padding: '0.8rem 2rem', minHeight: '3.2rem' }} onClick={onDone}>
+      <button className="big-btn alt" style={{ fontSize: '1.4rem', padding: '0.8rem 2rem', minHeight: 'max(3.2rem, 48px)' }} onClick={onDone}>
         PLAY AGAIN ({left})
       </button>
     </div>

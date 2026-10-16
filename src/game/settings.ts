@@ -9,6 +9,8 @@ export interface Settings {
   lang: string;
   waveSeconds: number;
   muted: boolean;
+  /** Mobile only: the player chose to download the 40MB offline voice pack. */
+  voskOptIn: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -18,6 +20,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lang: 'en-US',
   waveSeconds: 6,
   muted: false,
+  voskOptIn: false,
 };
 
 const KEY = 'mumble-monster:settings';

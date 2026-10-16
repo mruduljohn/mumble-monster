@@ -2,16 +2,22 @@
 
 export type Outcome = 'crit' | 'hit' | 'garbled' | 'mumble';
 
-export const MONSTER_MAX_HP = 200;
-export const WORD_MATCH_MIN = 0.7; // per-word similarity needed to count as "heard"
-export const MUMBLE_MAX_LOUDNESS = 25; // below this the line is a mumble
-export const HIT_MIN_LOUDNESS = 40; // loudness needed for a clean hit
+export const MONSTER_MAX_HP = 82;
+export const WORD_MATCH_MIN = 0.6; // per-word similarity needed to count as "heard"
+export const MUMBLE_MAX_LOUDNESS = 20; // below this the line is a mumble
+export const HIT_MIN_LOUDNESS = 35; // loudness needed for a clean hit
 export const CRIT_MIN_LOUDNESS = 75;
-export const HIT_MIN_CLARITY = 0.6;
-export const CRIT_MIN_CLARITY = 0.9;
-export const GARBLED_MIN_LOUDNESS = 50; // loud but unclear -> "shouting isn't clarity"
-export const HEAL_AMOUNT = 8;
+export const HIT_MIN_CLARITY = 0.5;
+export const CRIT_MIN_CLARITY = 0.85;
+export const GARBLED_MIN_LOUDNESS = 40; // loud but unclear -> "shouting isn't clarity"
+export const HEAL_AMOUNT = 4;
 export const FINALE_DAMAGE_MULTIPLIER = 1.5;
+export const BASE_DAMAGE = 22;
+export const CLARITY_DAMAGE = 8; // extra damage at perfect clarity
+export const CRIT_BONUS_DAMAGE = 8;
+export const GARBLED_DAMAGE_FACTOR = 0.6; // loud-but-unclear still counts as a reduced real hit
+export const PRE_FINALE_MIN_HP = 10; // monster cannot die before the finishing move
+export const OVERKILL_POINTS_PER_HP = 10; // absorbed damage becomes bonus score
 
 /** Lowercase, drop punctuation, collapse whitespace. */
 export function normalize(text: string): string {
@@ -145,7 +151,7 @@ export function classifyOutcome(clarity: number, loudness: number): Outcome {
 }
 
 export function comboMultiplier(streak: number): number {
-  return Math.min(2, 1 + 0.25 * Math.max(0, streak - 1));
+  return Math.min(1.8, 1 + 0.2 * Math.max(0, streak - 1));
 }
 
 export interface LineResult {
@@ -170,7 +176,7 @@ export function resolveLine(opts: {
   const good = outcome === 'crit' || outcome === 'hit';
   const streak = good ? opts.streak + 1 : 0;
   const finaleMult = finale ? FINALE_DAMAGE_MULTIPLIER : 1;
-  const base = 18 + clarity * 10 + (outcome === 'crit' ? 4 : 0);
+  const base = BASE_DAMAGE + clarity * CLARITY_DAMAGE + (outcome === 'crit' ? CRIT_BONUS_DAMAGE : 0);
 
   let damage = 0;
   let heal = 0;
@@ -179,7 +185,7 @@ export function resolveLine(opts: {
     damage = Math.round(base * comboMultiplier(streak) * finaleMult);
     points = Math.round((clarity * 500 + loudness * 3) * comboMultiplier(streak) * finaleMult);
   } else if (outcome === 'garbled') {
-    damage = Math.round((base / 2) * finaleMult);
+    damage = Math.round(base * GARBLED_DAMAGE_FACTOR * finaleMult);
     points = Math.round(clarity * 150);
   } else {
     heal = HEAL_AMOUNT;
@@ -188,6 +194,26 @@ export function resolveLine(opts: {
 }
 
 export const VICTORY_BONUS = 500;
+export const RETRY_MIN_PRIOR_HITS = 2;
+
+/** A missed (mumble/silent) finale gets one "LAST CHANCE" replay if the player already landed enough hits. */
+export function grantsFinaleRetry(opts: { finale: boolean; outcome: Outcome; priorHits: number; retryUsed: boolean }): boolean {
+  return opts.finale && !opts.retryUsed && opts.outcome === 'mumble' && opts.priorHits >= RETRY_MIN_PRIOR_HITS;
+}
+
+/**
+ * Apply one scored wave to the monster's HP. Before the finale the monster can never drop below
+ * PRE_FINALE_MIN_HP; damage absorbed by that clamp is returned as `overkill` bonus points.
+ */
+export function applyWave(hp: number, r: Pick<LineResult, 'damage' | 'heal'>, finale: boolean): { hp: number; overkill: number } {
+  let next = Math.min(MONSTER_MAX_HP, hp - r.damage + r.heal);
+  let overkill = 0;
+  if (!finale && next < PRE_FINALE_MIN_HP) {
+    overkill = (PRE_FINALE_MIN_HP - next) * OVERKILL_POINTS_PER_HP;
+    next = PRE_FINALE_MIN_HP;
+  }
+  return { hp: Math.max(0, next), overkill };
+}
 
 export function pickTitle(opts: { won: boolean; avgClarity: number; peakLoudness: number; avgLoudness: number }): string {
   const { won, avgClarity, peakLoudness, avgLoudness } = opts;

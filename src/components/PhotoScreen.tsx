@@ -83,9 +83,9 @@ export function PhotoScreen({ nickname, onDone }: { nickname: string; onDone: (p
 
   return (
     <div className="screen" style={{ gap: '0.9rem' }}>
-      <h2 className="neon-title" style={{ fontSize: '2.2rem' }}>SUIT UP, HERO!</h2>
+      <h2 className="neon-title" style={{ fontSize: 'min(2.2rem, 8vw)' }}>SUIT UP, HERO!</h2>
 
-      <div style={{ position: 'relative', width: '17rem', height: '17rem' }}>
+      <div className="photo-circle">
         {/* hero helmet frame */}
         <div style={{ position: 'absolute', inset: '-0.9rem', borderRadius: '50%', border: '0.5rem solid var(--plum)', background: 'conic-gradient(var(--pink), var(--lemon), var(--sky), var(--grape), var(--pink))', zIndex: 0, boxShadow: 'var(--shadow-soft)' }} />
         <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'hidden', border: '0.4rem solid var(--plum)', background: '#ffe9f5', zIndex: 1 }}>
@@ -120,7 +120,7 @@ export function PhotoScreen({ nickname, onDone }: { nickname: string; onDone: (p
         {step === 'fallback' && 'No camera? No problem - your hero will wear the default face.'}
       </div>
 
-      <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
         {step === 'live' && <button className="big-btn" style={{ fontSize: '1.4rem', padding: '0.7rem 1.8rem', minHeight: '3.2rem' }} onClick={() => void snap()}>TAKE PHOTO</button>}
         {step === 'review' && (
           <>
@@ -133,8 +133,8 @@ export function PhotoScreen({ nickname, onDone }: { nickname: string; onDone: (p
         </button>
       </div>
 
-      <div style={{ fontSize: '1rem', opacity: 0.8, maxWidth: '40rem' }}>
-        Optional. Your photo stays on this laptop for this game only and is deleted when you finish.
+      <div style={{ fontSize: '1rem', opacity: 0.8, maxWidth: 'min(40rem, 100%)' }}>
+        Optional. Your photo stays on this device for this game only and is deleted when you finish.
       </div>
     </div>
   );

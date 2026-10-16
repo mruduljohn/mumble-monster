@@ -8,7 +8,7 @@ export function NameScreen({ defaultName, onDone }: { defaultName: string; onDon
   const submit = () => onDone(name.trim() || defaultName);
   return (
     <div className="screen" style={{ gap: '1.8rem' }}>
-      <motion.h2 className="neon-title" style={{ fontSize: '2.8rem' }} initial={{ scale: 0.3, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 200, damping: 10 }}>
+      <motion.h2 className="neon-title" style={{ fontSize: 'min(2.8rem, 9vw)' }} initial={{ scale: 0.3, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 200, damping: 10 }}>
         YOUR NAME?
       </motion.h2>
       <motion.input
@@ -16,6 +16,7 @@ export function NameScreen({ defaultName, onDone }: { defaultName: string; onDon
         className="name-input"
         value={name}
         maxLength={12}
+        enterKeyHint="go" autoComplete="off" autoCorrect="off" autoCapitalize="words" spellCheck={false} aria-label="Your name"
         placeholder={defaultName}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && submit()}

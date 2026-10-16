@@ -6,8 +6,8 @@ import { updateSettings, useSettings, type EngineChoice } from '../game/settings
 
 const LANGS = ['en-US', 'en-IN', 'en-GB', 'en-AU'];
 const row = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', margin: '0.5rem 0' } as const;
-const field = { fontSize: '1rem', padding: '0.3rem 0.5rem', background: '#fff', color: 'var(--plum)', border: '2px solid var(--plum)', borderRadius: '0.5rem', fontFamily: 'inherit' } as const;
-const btn = { padding: '0.4rem 0.9rem', border: '2px solid var(--plum)', borderRadius: '0.5rem', background: 'var(--lemon)', fontSize: '1rem' } as const;
+const field = { fontSize: 'max(1rem, 16px)', minHeight: 44, padding: '0.3rem 0.5rem', background: '#fff', color: 'var(--plum)', border: '2px solid var(--plum)', borderRadius: '0.5rem', fontFamily: 'inherit' } as const;
+const btn = { minHeight: 44, minWidth: 44, padding: '0.4rem 0.9rem', border: '2px solid var(--plum)', borderRadius: '0.5rem', background: 'var(--lemon)', fontSize: '1rem' } as const;
 
 export function AdminPanel({ manager, onClose }: { manager: SpeechManager; onClose: () => void }) {
   const s = useSettings();
@@ -41,9 +41,9 @@ export function AdminPanel({ manager, onClose }: { manager: SpeechManager; onClo
   };
 
   return (
-    <div style={{ position: 'absolute', top: '1rem', right: '1rem', width: '28rem', zIndex: 100, fontSize: '1.05rem', borderRadius: '1rem', padding: '1rem 1.4rem', background: '#fff' }} className="panel">
+    <div style={{ position: 'absolute', top: 'calc(0.5rem + var(--sat))', right: 'calc(0.5rem + var(--sar))', width: 'min(28rem, calc(100% - 1rem))', maxHeight: 'calc(100% - 1rem - var(--sat) - var(--sab))', overflowY: 'auto', zIndex: 100, fontSize: '1.05rem', borderRadius: '1rem', padding: '1rem 1.4rem', background: '#fff' }} className="panel">
       <div style={{ ...row, fontSize: '1.3rem', paddingBottom: '0.4rem', borderBottom: '1px solid rgba(43,27,63,0.2)' }}>
-        <span>ADMIN (Ctrl+Shift+A)</span>
+        <span>ADMIN (Ctrl+Shift+A, or tap top-left corner 5x)</span>
         <button style={btn} onClick={onClose}>Close</button>
       </div>
       <label style={row}>
